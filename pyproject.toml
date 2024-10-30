@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "tap-bing-ads"
+version = "2.3.0"
+description = "Singer.io tap for extracting data from the Bing Ads API"
+authors = ["Stitch <dev@stitchdata.com>"]
+homepage = "http://singer.io"
+packages = [
+    { include = "tap_bingads.py" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+arrow = "0.12.0"
+bingads = "13.0.11.1"
+requests = "2.31.0"
+singer-python = "6.0.0"
+stringcase = "1.2.0"
+backoff = "2.2.1"
+
+[tool.poetry.group.dev.dependencies]
+ipdb = "*"
+
+[tool.poetry.group.test.dependencies]
+pylint = "3.0.3"
+
+[tool.poetry.scripts]
+tap-bing-ads = "tap_bing_ads:main" 

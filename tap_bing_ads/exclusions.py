@@ -101,6 +101,7 @@ EXCLUSIONS = {
                 "AudienceImpressionLostToBudgetPercent",
                 "AudienceImpressionLostToRankPercent",
                 "AudienceImpressionSharePercent",
+                "RelativeCtr",
             ],
         },
         {

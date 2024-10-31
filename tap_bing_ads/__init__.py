@@ -43,6 +43,19 @@ REQUIRED_CONFIG_KEYS = [
 # objects that are at the root level, with selectable fields in the Stitch UI
 TOP_LEVEL_CORE_OBJECTS = ["AdvertiserAccount", "Campaign", "AdGroup", "Ad"]
 
+REPORT_PRIMARY_KEYS = [
+    "AccountId",
+    "CampaignId",
+    "DeviceType",
+    "DeviceOS",
+    "Network",
+    "TopVsOther",
+    "BidMatchType",
+    "DeliveredMatchType",
+]
+
+REPORT_REPLICATION_KEY = ["TimePeriod"]
+
 CONFIG = {}
 STATE = {}
 
@@ -619,7 +632,11 @@ def discover_reports():
             report_schema = get_report_schema(client, report_name)
             report_metadata = get_report_metadata(report_name, report_schema)
             report_stream_def = get_stream_def(
-                stream_name, report_schema, stream_metadata=report_metadata
+                stream_name,
+                report_schema,
+                stream_metadata=report_metadata,
+                pks=REPORT_PRIMARY_KEYS,
+                replication_keys=REPORT_REPLICATION_KEY,
             )
             report_streams.append(report_stream_def)
 
@@ -774,34 +791,115 @@ def sync_campaigns(
         return map(lambda x: x["Id"], campaigns)
 
 
-@bing_ads_error_handling
-def sync_ad_groups(client, account_id, campaign_ids, selected_streams):
+async def sync_ad_groups(client, account_id, campaign_ids, selected_streams):
+    """Asynchronously sync ad groups for given campaigns."""
     ad_group_ids = []
-    for campaign_id in campaign_ids:
+
+    # Get batch configuration from config
+    batch_size = int(CONFIG.get("ad_groups_batch_size", 10))
+    batch_delay = float(CONFIG.get("ad_groups_batch_delay", 0.1))
+
+    # Split campaigns into batches
+    campaign_batches = [
+        campaign_ids[i : i + batch_size]
+        for i in range(0, len(campaign_ids), batch_size)
+    ]
+
+    @bing_ads_error_handling
+    @backoff.on_exception(
+        backoff.expo,
+        (Exception),
+        max_tries=5,
+        giveup=lambda e: not should_retry_httperror(e),
+        on_backoff=lambda details: LOGGER.info(
+            "Retrying campaign %s after %d tries. Exception: %s",
+            details["args"][0],  # campaign_id is first arg
+            details["tries"],
+            details["exception"],
+        ),
+    )
+    async def process_campaign(campaign_id):
+        """Process a single campaign with retries."""
         response = client.GetAdGroupsByCampaignId(CampaignId=campaign_id)
         response_dict = sobject_to_dict(response)
 
         if "AdGroup" in response_dict:
-            ad_groups = sobject_to_dict(response)["AdGroup"]
+            return sobject_to_dict(response)["AdGroup"]
+        return []
 
-            if "ad_groups" in selected_streams:
+    async def process_batch(batch):
+        """Process a batch of campaigns with error handling."""
+        failed_campaigns = []
+        batch_ad_groups = []
+
+        for campaign_id in batch:
+            try:
+                ad_groups = await process_campaign(campaign_id)
+                if ad_groups and "ad_groups" in selected_streams:
+                    LOGGER.info(
+                        "Syncing AdGroups for Account: %s, Campaign: %s",
+                        account_id,
+                        campaign_id,
+                    )
+                    batch_ad_groups.extend(ad_groups)
+                    ad_group_ids.extend(list(map(lambda x: x["Id"], ad_groups)))
+            except Exception as e:
+                LOGGER.error(
+                    f"Failed to process campaign {campaign_id} after all retries: {str(e)}"
+                )
+                failed_campaigns.append(campaign_id)
+
+        return batch_ad_groups, failed_campaigns
+
+    total_ad_groups = 0
+    all_failed_campaigns = []
+
+    if "ad_groups" in selected_streams:
+        selected_fields = get_selected_fields(selected_streams["ad_groups"])
+        singer.write_schema("ad_groups", get_core_schema(client, "AdGroup"), ["Id"])
+
+        with metrics.record_counter("ad_groups") as counter:
+            for batch_num, batch in enumerate(campaign_batches, 1):
                 LOGGER.info(
-                    "Syncing AdGroups for Account: %s, Campaign: %s",
-                    account_id,
-                    campaign_id,
+                    f"Processing batch {batch_num}/{len(campaign_batches)} "
+                    f"({len(batch)} campaigns)"
                 )
-                selected_fields = get_selected_fields(selected_streams["ad_groups"])
-                singer.write_schema(
-                    "ad_groups", get_core_schema(client, "AdGroup"), ["Id"]
-                )
-                with metrics.record_counter("ad_groups") as counter:
+
+                batch_ad_groups, failed_campaigns = await process_batch(batch)
+
+                # Record successful ad groups
+                if batch_ad_groups:
                     singer.write_records(
                         "ad_groups",
-                        filter_selected_fields_many(selected_fields, ad_groups),
+                        filter_selected_fields_many(selected_fields, batch_ad_groups),
                     )
-                    counter.increment(len(ad_groups))
+                    counter.increment(len(batch_ad_groups))
+                    total_ad_groups += len(batch_ad_groups)
 
-            ad_group_ids += list(map(lambda x: x["Id"], ad_groups))
+                # Track failures
+                all_failed_campaigns.extend(failed_campaigns)
+
+                # Respect rate limits between batches
+                if batch_num < len(campaign_batches):
+                    await asyncio.sleep(batch_delay)
+
+    # Log summary
+    success_count = len(campaign_ids) - len(all_failed_campaigns)
+    LOGGER.info(
+        f"Completed ad groups sync - "
+        f"Processed: {len(campaign_ids)} campaigns, "
+        f"Successful: {success_count}, "
+        f"Failed: {len(all_failed_campaigns)}, "
+        f"Total ad groups synced: {total_ad_groups}"
+    )
+
+    # If there were failures, log them for investigation
+    if all_failed_campaigns:
+        LOGGER.warning(
+            f"Failed campaigns: {all_failed_campaigns}. "
+            "These campaigns should be investigated and potentially resynced."
+        )
+
     return ad_group_ids
 
 
@@ -918,7 +1016,7 @@ async def sync_core_objects(account_id, selected_streams):
     campaign_ids = sync_campaigns(client, account_id, selected_streams)
 
     if campaign_ids and ("ad_groups" in selected_streams or "ads" in selected_streams):
-        ad_group_ids = sync_ad_groups(
+        ad_group_ids = await sync_ad_groups(
             client, account_id, campaign_ids, selected_streams
         )
         if "ads" in selected_streams:

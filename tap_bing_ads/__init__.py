@@ -976,8 +976,8 @@ async def sync_ads(client, selected_streams, ad_group_ids):
         async def process_batch_with_semaphore(batch_num, batch):
             nonlocal total_ads
             async with sem:
-                # Add random sleep between 0.1 and 1 second before processing each batch
-                await asyncio.sleep(random.uniform(0.1, 0.5))
+                # Add random sleep between 0.1 and 0.2 second before processing each batch
+                await asyncio.sleep(random.uniform(0.1, 0.2))
 
                 LOGGER.info(
                     f"Processing batch {batch_num}/{len(ad_group_batches)} ({len(batch)} ad groups)"

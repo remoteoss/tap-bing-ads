@@ -53,9 +53,8 @@ REPORT_PRIMARY_KEYS = [
     "TopVsOther",
     "BidMatchType",
     "DeliveredMatchType",
+    "TimePeriod",
 ]
-
-REPORT_REPLICATION_KEY = ["TimePeriod"]
 
 CONFIG = {}
 STATE = {}
@@ -637,7 +636,6 @@ def discover_reports():
                 report_schema,
                 stream_metadata=report_metadata,
                 pks=REPORT_PRIMARY_KEYS,
-                replication_keys=REPORT_REPLICATION_KEY,
             )
             report_streams.append(report_stream_def)
 

@@ -788,7 +788,8 @@ def sync_campaigns(
                 )
                 counter.increment(len(campaigns))
 
-        return map(lambda x: x["Id"], campaigns)
+        # Convert map object to list before returning
+        return list(map(lambda x: x["Id"], campaigns))
 
 
 async def sync_ad_groups(client, account_id, campaign_ids, selected_streams):

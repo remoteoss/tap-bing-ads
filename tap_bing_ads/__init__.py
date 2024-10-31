@@ -23,6 +23,7 @@ import stringcase
 import requests
 import arrow
 import backoff
+import random
 
 from tap_bing_ads import reports
 from tap_bing_ads.exclusions import EXCLUSIONS
@@ -909,7 +910,6 @@ async def sync_ads(client, selected_streams, ad_group_ids):
     singer.write_schema("ads", get_core_schema(client, "Ad"), ["Id"])
 
     batch_size = int(CONFIG.get("ads_batch_size", 10))
-    batch_delay = float(CONFIG.get("ads_batch_delay", 0.1))
     ad_group_batches = [
         ad_group_ids[i : i + batch_size]
         for i in range(0, len(ad_group_ids), batch_size)
@@ -970,13 +970,33 @@ async def sync_ads(client, selected_streams, ad_group_ids):
     all_failed_ad_groups = []
 
     with metrics.record_counter("ads") as counter:
-        for batch_num, batch in enumerate(ad_group_batches, 1):
-            LOGGER.info(
-                f"Processing batch {batch_num}/{len(ad_group_batches)} ({len(batch)} ad groups)"
-            )
+        # Process batches concurrently with a semaphore to control max concurrent tasks
+        sem = asyncio.Semaphore(
+            int(CONFIG.get("ads_semaphore_limit", 5))
+        )  # Process up to N batches concurrently
 
-            batch_ads, failed_ad_groups = await process_batch(batch)
+        async def process_batch_with_semaphore(batch_num, batch):
+            nonlocal total_ads
+            async with sem:
+                # Add random sleep between 0.1 and 1 second before processing each batch
+                await asyncio.sleep(random.uniform(0.1, 0.5))
 
+                LOGGER.info(
+                    f"Processing batch {batch_num}/{len(ad_group_batches)} ({len(batch)} ad groups)"
+                )
+                return await process_batch(batch)
+
+        # Create tasks for all batches
+        tasks = [
+            process_batch_with_semaphore(batch_num, batch)
+            for batch_num, batch in enumerate(ad_group_batches, 1)
+        ]
+
+        # Process all batches and gather results
+        batch_results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Process results sequentially to maintain consistent counter/state updates
+        for batch_num, (batch_ads, failed_ad_groups) in enumerate(batch_results, 1):
             # Record successful ads
             if batch_ads:
                 singer.write_records("ads", batch_ads)
@@ -985,10 +1005,6 @@ async def sync_ads(client, selected_streams, ad_group_ids):
 
             # Track failures
             all_failed_ad_groups.extend(failed_ad_groups)
-
-            # Respect rate limits between batches
-            if batch_num < len(ad_group_batches):
-                await asyncio.sleep(batch_delay)
 
     # Log summary
     success_count = len(ad_group_ids) - len(all_failed_ad_groups)

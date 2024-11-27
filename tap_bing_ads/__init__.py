@@ -54,6 +54,7 @@ REPORT_PRIMARY_KEYS = [
     "BidMatchType",
     "DeliveredMatchType",
     "TimePeriod",
+    "AdDistribution",
 ]
 
 CONFIG = {}

@@ -652,16 +652,19 @@ def discover_reports():
         match = re.match(report_column_regex, type_name)
         if match and match.groups()[0] in reports.REPORT_WHITELIST:
             report_name = match.groups()[0]
-            stream_name = stringcase.snakecase(report_name)
-            report_schema = get_report_schema(client, report_name)
-            report_metadata = get_report_metadata(report_name, report_schema)
-            report_stream_def = get_stream_def(
-                stream_name,
-                report_schema,
-                stream_metadata=report_metadata,
-                pks=REPORT_PRIMARY_KEYS[match.groups()[0]],
-            )
-            report_streams.append(report_stream_def)
+            try:
+                stream_name = stringcase.snakecase(report_name)
+                report_schema = get_report_schema(client, report_name)
+                report_metadata = get_report_metadata(report_name, report_schema)
+                report_stream_def = get_stream_def(
+                    stream_name,
+                    report_schema,
+                    stream_metadata=report_metadata,
+                    pks=REPORT_PRIMARY_KEYS[match.groups()[0]],
+                )
+                report_streams.append(report_stream_def)
+            except KeyError:
+                LOGGER.info("Skipping report %s - primary keys not defined", report_name)
 
     return report_streams
 

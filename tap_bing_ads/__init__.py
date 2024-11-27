@@ -57,9 +57,7 @@ REPORT_PRIMARY_KEYS = {
         "DeviceOS",
         "TopVsOther",
         "BidMatchType",
-        "BudgetAssociationStatus",
         "BudgetName",
-        "BudgetStatus",
         "Goal",
         "GoalType",
     ],
@@ -664,7 +662,9 @@ def discover_reports():
                 )
                 report_streams.append(report_stream_def)
             except KeyError:
-                LOGGER.info("Skipping report %s - primary keys not defined", report_name)
+                LOGGER.info(
+                    "Skipping report %s - primary keys not defined", report_name
+                )
 
     return report_streams
 

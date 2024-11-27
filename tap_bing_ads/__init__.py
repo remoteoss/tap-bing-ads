@@ -44,18 +44,41 @@ REQUIRED_CONFIG_KEYS = [
 # objects that are at the root level, with selectable fields in the Stitch UI
 TOP_LEVEL_CORE_OBJECTS = ["AdvertiserAccount", "Campaign", "AdGroup", "Ad"]
 
-REPORT_PRIMARY_KEYS = [
-    "AccountId",
-    "CampaignId",
-    "DeviceType",
-    "DeviceOS",
-    "Network",
-    "TopVsOther",
-    "BidMatchType",
-    "DeliveredMatchType",
-    "TimePeriod",
-    "AdDistribution",
-]
+REPORT_PRIMARY_KEYS = {
+    "CampaignPerformanceReport": [
+        "AccountId",
+        "CampaignId",
+        "TimePeriod",
+        "CurrencyCode",
+        "AdDistribution",
+        "DeviceType",
+        "Network",
+        "DeliveredMatchType",
+        "DeviceOS",
+        "TopVsOther",
+        "BidMatchType",
+        "BudgetAssociationStatus",
+        "BudgetName",
+        "BudgetStatus",
+        "Goal",
+        "GoalType",
+    ],
+    "AdGroupPerformanceReport": [
+        "AccountId",
+        "CampaignId",
+        "AdGroupId",
+        "TimePeriod",
+        "CurrencyCode",
+        "AdDistribution",
+        "DeviceType",
+        "Network",
+        "DeliveredMatchType",
+        "DeviceOS",
+        "TopVsOther",
+        "BidMatchType",
+        "Language",
+    ],
+}
 
 CONFIG = {}
 STATE = {}
@@ -636,7 +659,7 @@ def discover_reports():
                 stream_name,
                 report_schema,
                 stream_metadata=report_metadata,
-                pks=REPORT_PRIMARY_KEYS,
+                pks=REPORT_PRIMARY_KEYS[match.groups()[0]],
             )
             report_streams.append(report_stream_def)
 

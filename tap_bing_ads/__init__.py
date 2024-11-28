@@ -75,6 +75,9 @@ REPORT_PRIMARY_KEYS = {
         "TopVsOther",
         "BidMatchType",
         "Language",
+        "Goal",
+        "GoalType",
+        "AdGroupType"
     ],
 }
 

@@ -24,6 +24,7 @@ import requests
 import arrow
 import backoff
 import random
+import hashlib
 
 from tap_bing_ads import reports
 from tap_bing_ads.exclusions import EXCLUSIONS
@@ -584,7 +585,15 @@ def get_report_schema(client, report_name):
 
         properties[column] = col_schema
 
+    # Add _sdc_report_datetime field
     properties["_sdc_report_datetime"] = {"type": "string", "format": "date-time"}
+
+    # Add uid field
+    if CONFIG.get("generate_uid", False) and report_name in REPORT_PRIMARY_KEYS:
+        properties["uid"] = {
+            "type": ["null", "string"],
+            "description": "Unique identifier hash created from primary key fields",
+        }
 
     return {"properties": properties, "additionalProperties": False, "type": "object"}
 
@@ -653,6 +662,12 @@ def discover_reports():
         if match and match.groups()[0] in reports.REPORT_WHITELIST:
             report_name = match.groups()[0]
             try:
+                pks = (
+                    ["uid"]
+                    if CONFIG.get("generate_uid", False)
+                    and report_name in REPORT_PRIMARY_KEYS
+                    else REPORT_PRIMARY_KEYS[report_name]
+                )
                 stream_name = stringcase.snakecase(report_name)
                 report_schema = get_report_schema(client, report_name)
                 report_metadata = get_report_metadata(report_name, report_schema)
@@ -660,7 +675,7 @@ def discover_reports():
                     stream_name,
                     report_schema,
                     stream_metadata=report_metadata,
-                    pks=REPORT_PRIMARY_KEYS[match.groups()[0]],
+                    pks=pks,
                 )
                 report_streams.append(report_stream_def)
             except KeyError:
@@ -1205,6 +1220,22 @@ def stream_report(stream_name, report_name, url, report_time):
                     for row in reader:
                         type_report_row(row)
                         row["_sdc_report_datetime"] = report_time
+
+                        # Create and hash UID from primary keys if they exist for this report
+                        if report_name in REPORT_PRIMARY_KEYS and CONFIG.get(
+                            "generate_uid", False
+                        ):
+                            uid_parts = []
+                            for key in REPORT_PRIMARY_KEYS[report_name]:
+                                if key in row:
+                                    uid_parts.append(str(row[key]))
+                            if uid_parts:
+                                # Create concatenated string and hash it
+                                uid_string = "_".join(uid_parts)
+                                row["uid"] = hashlib.sha256(
+                                    uid_string.encode()
+                                ).hexdigest()
+
                         singer.write_record(stream_name, row)
                         counter.increment()
 
@@ -1406,7 +1437,7 @@ def build_report_request(
     scope.AccountIds = {"long": [account_id]}
     report_request.Scope = scope
 
-    excluded_fields = ["_sdc_report_datetime"]
+    excluded_fields = ["_sdc_report_datetime", "uid"]
 
     selected_fields = get_selected_fields(report_stream, exclude=excluded_fields)
 

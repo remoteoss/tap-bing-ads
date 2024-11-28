@@ -81,7 +81,13 @@ REPORT_PRIMARY_KEYS = {
         "AdGroupLabels",
         "CustomerId",
         "CampaignType",
-        "BaseCampaignId"
+        "BaseCampaignId",
+        "TrackingTemplate",
+        "CustomParameters",
+        "AccountStatus",
+        "CampaignStatus",
+        "FinalUrlSUffix",
+        "CampaignType"
     ],
 }
 

@@ -59,7 +59,7 @@ REPORT_PRIMARY_KEYS = {
         "BidMatchType",
         "BudgetName",
         "Goal",
-        "GoalType",
+        "GoalType"
     ],
     "AdGroupPerformanceReport": [
         "AccountId",
@@ -77,7 +77,11 @@ REPORT_PRIMARY_KEYS = {
         "Language",
         "Goal",
         "GoalType",
-        "AdGroupType"
+        "AdGroupType",
+        "AdGroupLabels",
+        "CustomerId",
+        "CampaignType",
+        "BaseCampaignId"
     ],
 }
 
